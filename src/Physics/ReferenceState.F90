@@ -119,13 +119,20 @@ Module ReferenceState
     Real*8, Allocatable :: paf_gp2(:)
 
 
+    Real*8 :: poly_n1 = 1.5d0
+    Real*8 :: poly_n2 = 1.5d0
+    Real*8 :: poly_r_transition=0.5d0
+    Real*8 :: poly_width = 0.1d0
+    Real*8 :: poly_delta = 0.2d0
+
     Namelist /Reference_Namelist/ reference_type,poly_n, poly_Nrho, poly_mass,poly_rho_i, &
             & pressure_specific_heat, heating_type, luminosity, Angular_Velocity, &
             & Rayleigh_Number, Ekman_Number, Prandtl_Number, Magnetic_Prandtl_Number, &
             & gravity_power, heating_factor, heating_r0, custom_reference_file, &
             & custom_reference_type, cooling_type, cooling_r0, cooling_factor, &
             & Dissipation_Number, Modified_Rayleigh_Number, Heating_Integral, &
-            & Dimensional, NonDimensional_Anelastic
+            & Dimensional, NonDimensional_Anelastic, &
+            & poly_n1, poly_n2, poly_delta, poly_width, poly_r_transition
 Contains
 
     Subroutine Initialize_Reference()
@@ -153,6 +160,11 @@ Contains
                 Call Get_Custom_Reference()
             Endif
         Endif
+
+        If (reference_type .eq. 5) Then
+            Call Polytropic_ReferenceLK()
+        Endif
+
         If (my_rank .eq. 0) Then
             Call stdout%print(" -- Reference State initialized.")
             Call stdout%print(" ")
@@ -547,6 +559,220 @@ Contains
             ref%ohmic_amp(1:N_R) = 0.0d0
         Endif
     End Subroutine Polytropic_Reference
+
+    Subroutine Polytropic_ReferenceLK()
+        Real*8 ::  d, n2, n1 !,zeta_0,  c0, c1
+        !Real*8 :: rho_c, P_c, T_c!,denom
+        Real*8 :: beta, Gas_Constant
+        Real*8, Allocatable :: zeta(:)
+	real*8, dimension(N_R) :: zeta_0,  c0, c1, poly_nfun, denom, rho_c, P_c, T_c,logrho,logT
+        Real*8 :: One, ee
+        Real*8 :: InnerRadius, OuterRadius, A_nfun, B_nfun, poly_r0, poly_r1
+        Integer :: r,i,ir
+        Character*6  :: istr
+        Character*12 :: dstring
+        Character*8 :: dofmt = '(ES12.5)'
+        If (my_rank .eq. 0) Then
+            Call stdout%print(" ---- Reference type                : "//trim(" Polytrope (Dimensional)"))
+            Write(dstring,dofmt)Angular_Velocity
+            Call stdout%print(" ---- Angular Velocity (rad/s)      : "//trim(dstring))
+            Write(dstring,dofmt)poly_rho_i
+            Call stdout%print(" ---- Inner-Radius Density (g/cm^3) : "//trim(dstring))
+            Write(dstring,dofmt)poly_mass
+            Call stdout%print(" ---- Interior Mass  (g)            : "//trim(dstring))
+            Write(dstring,dofmt)poly_n
+            Call stdout%print(" ---- Polytropic Index              : "//trim(dstring))
+            Write(dstring,dofmt)poly_nrho
+            Call stdout%print(" ---- Density Scaleheights          : "//trim(dstring))
+            Write(dstring,dofmt)pressure_specific_heat
+            Call stdout%print(" ---- CP (erg g^-1 cm^-3 K^-1)      : "//trim(dstring))
+        Endif
+
+        Dimensional_Reference = .true. ! This is actually the default
+
+        ! Adiabatic, Polytropic Reference State (see, e.g., Jones et al. 2011)
+        ! The following parameters are read from the input file.
+        ! poly_n
+        ! poly_Nrho
+        ! poly_mass
+        ! poly_rho_i
+
+        ! Note that cp must also be specified.
+        InnerRadius = Radius(N_r)
+        OuterRadius = Radius(1)
+
+
+        One = 1.0d0
+        !-----------------------------------------------------------
+        beta = InnerRadius/OuterRadius
+
+!!!!!!!!!!NEW stuff for overshoot problem
+
+        n1=poly_n1
+        n2=poly_n2
+
+
+!        A_nfun=0.5d0*(n2-n1)/tanh(0.04d0/poly_width)
+        A_nfun=0.5d0*(n2-n1)/tanh(poly_delta/poly_width)
+
+        B_nfun=0.5d0*(n1+n2)
+
+        poly_r0 = poly_r_transition-poly_delta
+        poly_r1 = poly_r_transition+poly_delta
+            
+        do i=1, N_R
+            if (Radius(i).lt. (poly_r0)*Radius(1)) then
+                poly_nfun(i)=n1
+            else if (Radius(i).ge. poly_r0 .and. Radius(i).le. poly_r1) then
+
+                poly_nfun(i)=A_nfun*tanh((Radius(i)-(poly_r_transition*Radius(1)))/poly_width)+B_nfun
+            else
+                poly_nfun(i)=n2
+            end if
+        enddo
+
+!do i=1, N_R
+	!denom(i)=beta * exp(poly_Nrho / poly_nfun(i)) + 1.d0
+	!zeta_0(i)= (beta+1.d0)/denom(i)
+ 	!c0(i) = (2.d0 * zeta_0(i) - beta - 1.d0) / (1.d0 - beta)
+	!c1(i) = (1.d0+beta)*(1.d0-zeta_0(i))/(1.d0 - beta)**2
+!enddo
+
+	denom=beta * exp(poly_Nrho / poly_nfun) + 1.d0
+	zeta_0= (beta+1.d0)/denom
+ 	c0 = (2.d0 * zeta_0 - beta - 1.d0) / (1.d0 - beta)
+	c1 = (1.d0+beta)*(1.d0-zeta_0)/(1.d0- beta)**2.
+	!zi=(1.+beta-zeta_0)/beta
+
+	!z=c0+c1*Dr/x
+	!T=z/zi
+	!rho=(z/zi)**poly_n
+	!p=(z/zi)**(poly_n+1.)
+	
+	  
+
+       
+        !-----------------------------------------------------------
+        ! allocate and define zeta
+        ! also rho_c, T_c, P_c
+
+        Allocate(zeta(N_R))
+
+        d = OuterRadius - InnerRadius
+	
+
+        zeta = c0 + c1 * d / Radius
+
+	rho_c = poly_rho_i / zeta(N_R)**poly_nfun
+
+       denom = (poly_nfun+1.d0) * d * c1
+       P_c = Gravitational_Constant * poly_mass * rho_c / denom
+!
+       T_c = (poly_nfun+1.d0) * P_c / (Pressure_Specific_Heat * rho_c)
+	
+
+  !do i=1,N_R
+
+     !   rho_c(i) = poly_rho_i / zeta(N_R)**poly_nfun(i)
+
+       !! denom(i) = (poly_nfun(i)+1.d0) * d * c1(i)
+       ! P_c(i) = Gravitational_Constant * poly_mass * rho_c(i) / denom(i)
+!
+        !T_c(i) = (poly_nfun(i)+1.d0) * P_c(i) / (Pressure_Specific_Heat * rho_c(i))
+!enddo
+
+
+
+        !-----------------------------------------------------------
+        ! Initialize reference structure
+        ref%gamma = (n2+1.0D0)/(n2)
+
+        If (STABLE_flag) Then
+
+           ref%gamma = 5.d0/3.d0
+
+        Endif
+
+
+        Gas_Constant = (ref%Gamma-one)*Pressure_Specific_Heat/ref%Gamma
+
+        Ref%Gravity = Gravitational_Constant * poly_mass / Radius**2
+
+        Ref%Density = rho_c * zeta**poly_nfun
+	
+
+	!!extras for overshoot
+	logrho=log(Ref%Density)
+	do ir=1,N_R-1
+    		Ref%dlnrho(ir)=((logrho(ir+1)-logrho(ir))/(Radius(ir+1)-Radius(ir)))
+		
+ 	end do
+	
+    Ref%dlnrho(N_R)=Ref%dlnrho(N_R-1)+((Ref%dlnrho(N_R-1)-Ref%dlnrho(N_R-2))/ &
+    (Radius(N_R-1)-Radius(N_R-2)))*(Radius(N_R)-Radius(N_R-1))
+
+	do ir=1,N_R-1
+ 
+		Ref%d2lnrho(ir)=((Ref%dlnrho(ir+1)-Ref%dlnrho(ir))/(Radius(ir+1)-Radius(ir)))
+
+	enddo
+	
+    Ref%d2lnrho(N_R)=Ref%d2lnrho(N_R-1)+((Ref%d2lnrho(N_R-1)-Ref%d2lnrho(N_R-2))/ &
+        (Radius(N_R-1)-Radius(N_R-2)))*(Radius(N_R)-Radius(N_R-1))
+       
+	!Ref%dlnrho = - poly_nfun * c1 * d / (zeta * Radius**2)
+        !Ref%d2lnrho = - Ref%dlnrho*(2.0d0/Radius-c1*d/zeta/Radius**2)
+
+        Ref%Temperature = T_c * zeta
+	
+	!!extras for overshoot
+	
+	logT=log(Ref%Temperature)
+
+	do ir=1,N_R-1
+    		Ref%dlnT(ir)=((logT(ir+1)-logT(ir))/(Radius(ir+1)-Radius(ir)))
+		
+ 	end do
+    Ref%dlnT(N_R)=Ref%dlnT(N_R-1)+((Ref%dlnT(N_R-1)-Ref%dlnT(N_R-2))/ &
+        (Radius(N_R-1)-Radius(N_R-2)))*(Radius(N_R)-Radius(N_R-1))
+        !Ref%dlnT = -(c1*d/Radius**2)/zeta
+
+        Ref%Pressure = P_c * zeta**(poly_nfun+1)
+
+        denom = P_c**(1.d0/ref%gamma)
+        Ref%Entropy = Pressure_Specific_Heat * log(denom/rho_c)
+
+        Ref%dsdr = 0.d0
+
+        Ref%Buoyancy_Coeff = ref%gravity/Pressure_Specific_Heat*ref%density
+
+        !We initialize s_conductive (modulo delta_s, specified by the boundary conditions)
+        !If (heating_type .eq. 0) Then
+        !    Allocate(s_conductive(1:N_R))
+        !    s_conductive(:) = 0.0d0
+        !    ee = -1.d0*poly_n
+        !    denom = zeta(1)**ee - zeta(N_R)**ee
+        !    Do r = 1, N_R
+        !      s_conductive(r) = (zeta(1)**ee - zeta(r)**ee) / denom
+        !    Enddo
+        !Endif
+
+
+        Call Initialize_Reference_Heating()
+
+        ref%Coriolis_Coeff        = 2.0d0*Angular_velocity
+        ref%dpdr_w_term(:)        = ref%density
+        ref%pressure_dwdr_term(:) = -1.0d0*ref%density
+        ref%viscous_amp(1:N_R)    = 2.0d0/ref%temperature(1:N_R)
+        If (magnetism) Then
+            ref%Lorentz_Coeff = 1.0d0/four_pi
+            ref%ohmic_amp(1:N_R) = ref%lorentz_coeff/ref%density(1:N_R)/ref%temperature(1:N_R)
+        Else
+            ref%Lorentz_Coeff = 0.0d0
+            ref%ohmic_amp(1:N_R) = 0.0d0
+        Endif
+    End Subroutine Polytropic_ReferenceLK
+
 
 
     Subroutine Initialize_Reference_Heating()
