@@ -41,6 +41,47 @@ class Spherical_3D:
     self.nr                                       : number of radial points
     self.ntheta                                   : number of theta points
     self.nphi                                     : number of phi points sampled
+    self.r                                        : radial coordinates
+    self.theta                                    : co-latitudinal coordinates
+    self.vals[0:nphi-1,0:ntheta=1,0:nr-1]         : 3-D array of values
+    """
+ 
+    def __init__(self,filename,path='Spherical_3D/'):
+        """filename  : The reference state file to read.
+           path      : The directory where the file is located (if not Spherical_3D)
+        """
+        self.basefilename = os.path.split(filename)[-1].split("_")[0]
+
+        grid_file = path+self.basefilename+"_grid"
+        fd = open(grid_file,'rb')
+        bs = check_endian(fd,314,'int32')
+        nr = swapread(fd,dtype='int32',count=1,swap=bs)
+        ntheta = swapread(fd,dtype='int32',count=1,swap=bs)
+        nphi = swapread(fd,dtype='int32',count=1,swap=bs)
+        assert(nphi == 2*ntheta)
+
+        self.nr = nr
+        self.ntheta = ntheta
+        self.nphi = nphi
+
+        rs = swapread(fd,dtype='float64',count=self.nr,swap=bs)
+        thetas = swapread(fd,dtype='float64',count=self.ntheta,swap=bs)
+        fd.close()
+
+        fd = open(path+filename, 'rb')
+        self.r = rs
+        self.theta = thetas
+        self.vals = np.reshape(swapread(fd,dtype='float64',count=nphi*ntheta*nr,swap=bs),(nphi,ntheta,nr), order = 'F')
+        fd.close()
+
+
+class Spherical_3D_multi:
+    """Rayleigh Spherical_3D Structure
+    ----------------------------------
+    self.basefilename                             : base filename
+    self.nr                                       : number of radial points
+    self.ntheta                                   : number of theta points
+    self.nphi                                     : number of phi points sampled
     self.rs                                       : radial coordinates
     self.thetas                                   : co-latitudinal coordinates
     self.vals[qindex][0:nphi-1,0:ntheta=1,0:nr-1] : dictionary of values, indexed by qindex
@@ -78,6 +119,8 @@ class Spherical_3D:
           if index == "grid": continue
           fd = open(path+var_file, 'rb')
           self.vals[index] = swapread(fd,dtype='float64',count=nphi*ntheta*nr,swap=bs)
+
+
 
 class RayleighTiming:
 
@@ -209,7 +252,7 @@ class ReferenceState:
     self.dsdr        : entropy gradient (radial)
     self.entropy     : entropy
     self.gravity     : gravity
-    self.heating     : volumetric heating (Q)
+    self.heating     : volumetric heating (Q) (only after Jan 2019)
     """
 
     def __init__(self,filename='none',path='./'):
@@ -225,7 +268,17 @@ class ReferenceState:
         bs = check_endian(fd,314,'int32')
         
         nr = swapread(fd,dtype='int32',count=1,swap=bs)
-        tmp = np.reshape(swapread(fd,dtype='float64',count=11*nr,swap=bs),(nr,11), order = 'F')
+        heating_written = True # First assume heating was written (as it will be from here on out
+        try:
+            tmp = np.reshape(swapread(fd,dtype='float64',count=11*nr,swap=bs),(nr,11), order = 'F')
+        except: # Heating was not written (different-size binary 'reference')
+            fd.close() # close and reopen the file to start from the beginning
+            # Read in two ints first to make sure the float arrays read in start at the right place!
+            fd = open(the_file,'rb')
+            dummy = swapread(fd, dtype='int32',count=1,swap=bs)
+            dummy = swapread(fd, dtype='int32',count=1,swap=bs)
+            tmp = np.reshape(swapread(fd,dtype='float64',count=10*nr,swap=bs),(nr,10), order = 'F')
+            heating_written = False
         self.nr = nr
         self.radius      = tmp[:,0]
         self.density     = tmp[:,1]
@@ -237,10 +290,15 @@ class ReferenceState:
         self.dsdr        = tmp[:,7]
         self.entropy     = tmp[:,8]
         self.gravity     = tmp[:,9]
-        self.heating     = tmp[:,10]
+        if heating_written:
+            self.heating     = tmp[:,10]
         self.ref = tmp
-        self.names = ['radius', 'density', 'dlnrho', 'd2lnrho', 'pressure', 'temperature',
+        if heating_written:
+            self.names = ['radius', 'density', 'dlnrho', 'd2lnrho', 'pressure', 'temperature',
         'dlnt', 'dsdr','entropy','gravity', 'heating']
+        else:
+            self.names = ['radius', 'density', 'dlnrho', 'd2lnrho', 'pressure', 'temperature',
+        'dlnt', 'dsdr','entropy','gravity']
         fd.close()
 
 class TransportCoeffs:
