@@ -120,7 +120,6 @@ Module ReferenceState
     Real*8 :: poly_n1 = 2.d0
     Real*8 :: poly_n2 = 1.5d0
     Real*8 :: r_t=0.7d0
-    Real*8 :: poly_width = 0.1d0
     Real*8 :: scf = 15.d0
 
 
@@ -130,7 +129,7 @@ Module ReferenceState
             & gravity_power, heating_factor, heating_r0, custom_reference_file, &
             & custom_reference_type, cooling_type, cooling_r0, cooling_factor, &
             & Dissipation_Number, Modified_Rayleigh_Number, Heating_Integral, &
-            & Dimensional, NonDimensional_Anelastic, poly_width,poly_n1,poly_n2,scf,r_t
+            & Dimensional, NonDimensional_Anelastic,poly_n1,poly_n2,scf,r_t
 Contains
 
     Subroutine Initialize_Reference()
@@ -536,12 +535,11 @@ Contains
 
 
     Subroutine Polytropic_ReferenceLK()
-        Real*8 ::  d!, poly_n2, poly_n1 !,zeta_0,  c0, c1
-        !Real*8 :: rho_c, P_c, T_c!,denom
-        Real*8 :: beta, Gas_Constant, poly_width
+        Real*8 ::  d
+        Real*8 :: beta, Gas_Constant
         Real*8, Allocatable :: zeta(:)
 	real*8, dimension(N_R) :: zeta_0,  c0, c1, poly_nfun, denom, rho_c, P_c, T_c,logrho,logT,zeta_cz
-        Real*8 :: One, ee, scf
+        Real*8 :: One, ee
         Real*8 :: InnerRadius, OuterRadius, A_nfun, B_nfun,r_cz
         Integer :: r,i,ir
         Character*6  :: istr
@@ -583,12 +581,10 @@ Contains
 	beta=r_cz/OuterRadius
 !!!!!!!!!!NEW stuff for overshoot problem
 
-!poly_n1=2.d0
-!poly_n2=1.5d0
-!poly_width=0.02d0
+
 A_nfun=0.5*(poly_n2-poly_n1) 
 B_nfun=0.5*(poly_n1+poly_n2)
-!scf=15.d0
+
     
 	do i=1, N_R
     	
@@ -1087,6 +1083,7 @@ B_nfun=0.5*(poly_n1+poly_n2)
                 !Interpolate onto the current radial grid if necessary
                 !Note that the underlying assumption here is that same # of grid points
                 ! means same grid - come back to this later for generality
+
                 Allocate(rtmp2(1:n_r))
                 Allocate(rtmp(1:nr_ref))
 
@@ -1254,6 +1251,10 @@ B_nfun=0.5*(poly_n1+poly_n2)
         Dimensional_Reference = .true.
         custom_reference_file ='nothing'
         custom_reference_type = 1
+	poly_n1 = 2.d0
+        poly_n2 = 1.5d0
+        r_t=0.7d0
+        scf = 15.d0
 
         If (allocated(s_conductive)) DeAllocate(s_conductive)
         If (allocated(ref%Density)) DeAllocate(ref%density)
