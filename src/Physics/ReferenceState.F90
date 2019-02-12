@@ -186,8 +186,37 @@ Contains
         Allocate(ref%pressure_dwdr_term(1:N_R))
         Allocate(ref%ohmic_amp(1:N_R))
         Allocate(ref%viscous_amp(1:N_R))
+	Allocate(ref%heating(1:N_R))
+
+
+	ref%density(:)            = Zero
+        ref%pressure(:)           = Zero        
+        ref%temperature(:)        = Zero
+        ref%entropy(:)            = Zero
+        ref%gravity(:)            = Zero
+        ref%dlnrho(:)             = Zero
+        ref%d2lnrho(:)            = Zero
+        ref%dlnt(:)               = Zero
+        ref%dsdr(:)               = Zero
+        ref%buoyancy_coeff(:)     = Zero
+        ref%dpdr_w_term(:)        = Zero
+        ref%pressure_dwdr_term(:) = Zero
+        ref%ohmic_amp(:)          = Zero
+        ref%viscous_amp(:)        = Zero
+        ref%heating(:)            = Zero
+
+        ref%gamma          = Zero
+        ref%Coriolis_Coeff = Zero
+        ref%Lorentz_Coeff  = Zero
+        ref%script_N_Top   = Zero
+        ref%script_K_Top   = Zero
+        ref%script_H_Top   = Zero
+
+
+
     End Subroutine Allocate_Reference_State
-    Subroutine Constant_Reference()
+    
+	Subroutine Constant_Reference()
         Implicit None
         Integer :: i
         Real*8 :: r_outer, r_inner, prefactor, amp, pscaling
@@ -582,8 +611,8 @@ Contains
 !!!!!!!!!!NEW stuff for overshoot problem
 
 
-A_nfun=0.5*(poly_n2-poly_n1) 
-B_nfun=0.5*(poly_n1+poly_n2)
+	A_nfun=0.5*(poly_n2-poly_n1) 
+	B_nfun=0.5*(poly_n1+poly_n2)
 
     
 	do i=1, N_R
@@ -684,8 +713,14 @@ B_nfun=0.5*(poly_n1+poly_n2)
 
         denom = P_c**(1.d0/ref%gamma)
         Ref%Entropy = Pressure_Specific_Heat * log(denom/rho_c)
-
-        Ref%dsdr = 0.d0
+	
+	do ir=1,N_R-1
+	
+        Ref%dsdr(ir) = ((Ref%Entropy(ir+1)-Ref%Entropy(ir))/(Radius(ir+1)-Radius(ir)))
+	
+	end do
+	Ref%dsdr(N_R)=Ref%dsdr(N_R-1)+((Ref%dsdr(N_R-1)-Ref%dsdr(N_R-2))/ &
+		   (Radius(N_R-1)-Radius(N_R-2)))*(Radius(N_R)-Radius(N_R-1))
 
         Ref%Buoyancy_Coeff = ref%gravity/Pressure_Specific_Heat*ref%density
 
@@ -950,6 +985,7 @@ B_nfun=0.5*(poly_n1+poly_n2)
             Write(15)(ref%dsdr(i),i=1,n_r)
             Write(15)(ref%entropy(i),i=1,n_r)
             Write(15)(ref%gravity(i),i=1,n_r)
+	    Write(15)(ref%heating(i),i=1,n_r)
             Close(15)
         Endif
     End Subroutine Write_Reference
