@@ -721,6 +721,13 @@ Contains
 	end do
 	Ref%dsdr(N_R)=Ref%dsdr(N_R-1)+((Ref%dsdr(N_R-1)-Ref%dsdr(N_R-2))/ &
 		   (Radius(N_R-1)-Radius(N_R-2)))*(Radius(N_R)-Radius(N_R-1))
+    !////////////////////
+    ! Nick mod
+    Ref%dsdr(:) = 0.0d0
+    Ref%dsdr = pressure_specific_heat*(-ref%gravity*ref%density/(ref%gamma*ref%pressure) &
+                &  -ref%dlnrho)
+
+    !/////////////////
 
         Ref%Buoyancy_Coeff = ref%gravity/Pressure_Specific_Heat*ref%density
 
