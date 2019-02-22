@@ -1,4 +1,3 @@
-!  Copyright (C) 2018 by the authors of the RAYLEIGH code.
 !
 !  This file is part of RAYLEIGH.
 !
@@ -675,14 +674,16 @@ Contains
 	
 
 	!!calculate dlnrho, dlnT, d2lnrho
-	logrho=log(Ref%Density)
+	!logrho=log(Ref%Density)
 	do ir=1,N_R-1
-    		Ref%dlnrho(ir)=((logrho(ir+1)-logrho(ir))/(Radius(ir+1)-Radius(ir)))
+    		Ref%dlnrho(ir)=((Ref%Density(ir+1)-Ref%Density(ir))/(Radius(ir+1)-Radius(ir)))
 		
  	end do
 	
 	Ref%dlnrho(N_R)=Ref%dlnrho(N_R-1)+((Ref%dlnrho(N_R-1)-Ref%dlnrho(N_R-2))/ &
 			 (Radius(N_R-1)-Radius(N_R-2)))*(Radius(N_R)-Radius(N_R-1))
+
+	Ref%dlnrho=Ref%dlnrho/Ref%Density
 
 	do ir=1,N_R-1
  
@@ -698,10 +699,10 @@ Contains
 	
 
 	
-	logT=log(Ref%Temperature)
+	!logT=log(Ref%Temperature)
 
 	do ir=1,N_R-1
-    		Ref%dlnT(ir)=((logT(ir+1)-logT(ir))/(Radius(ir+1)-Radius(ir)))
+    		Ref%dlnT(ir)=((Ref%Temperature(ir+1)-Ref%Temperature(ir))/(Radius(ir+1)-Radius(ir)))
 		
  	end do
 	
@@ -709,26 +710,28 @@ Contains
 		   (Radius(N_R-1)-Radius(N_R-2)))*(Radius(N_R)-Radius(N_R-1))
 
 
+	Ref%dlnT=Ref%dlnT/Ref%Temperature
+
         Ref%Pressure = P_c * zeta**(poly_nfun+1)
+	
+	! S for adiabatic case
+        !denom = P_c**(1.d0/ref%gamma)
+        !Ref%Entropy = Pressure_Specific_Heat * log(denom/rho_c)
 
-        denom = P_c**(1.d0/ref%gamma)
-        Ref%Entropy = Pressure_Specific_Heat * log(denom/rho_c)
+	!S for non-adiabatic case
+	denom = ref%pressure**(1.d0/ref%gamma)
+        Ref%Entropy = Pressure_Specific_Heat * log(denom/ref%density)
 	
-	do ir=1,N_R-1
 	
-        Ref%dsdr(ir) = ((Ref%Entropy(ir+1)-Ref%Entropy(ir))/(Radius(ir+1)-Radius(ir)))
-	
+        !Ref%dsdr = pressure_specific_heat*(-ref%gravity*ref%density/(ref%gamma*ref%pressure) &
+              !  &  -ref%dlnrho)
+	do ir=1,N_R
+		Ref%dsdr(ir) = ((Ref%Entropy(ir+1)-Ref%Entropy(ir))/(Radius(ir+1)-Radius(ir))) 
 	end do
-	Ref%dsdr(N_R)=Ref%dsdr(N_R-1)+((Ref%dsdr(N_R-1)-Ref%dsdr(N_R-2))/ &
-		   (Radius(N_R-1)-Radius(N_R-2)))*(Radius(N_R)-Radius(N_R-1))
-    !////////////////////
-    ! Nick mod
-    Ref%dsdr(:) = 0.0d0
-    Ref%dsdr = pressure_specific_heat*(-ref%gravity*ref%density/(ref%gamma*ref%pressure) &
-                &  -ref%dlnrho)
-
-    !/////////////////
-
+	
+ 	Ref%dsdr(N_R)=Ref%dsdr(N_R-1)+((Ref%dsdr(N_R-1)-Ref%dsdr(N_R-2))/ &
+		   (Radius(N_R-1)-Radius(N_R-2)))*(Radius(N_R)-Radius(N_R-1))	
+ 	
         Ref%Buoyancy_Coeff = ref%gravity/Pressure_Specific_Heat*ref%density
 
         !We initialize s_conductive (modulo delta_s, specified by the boundary conditions)
