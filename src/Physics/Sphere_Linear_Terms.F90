@@ -179,9 +179,22 @@ Contains
         Implicit None
 
         Real*8, Allocatable :: H_Laplacian(:), amp(:)
-        Integer :: l, lp
-        Real*8 :: diff_factor,ell_term
+        Integer :: l, lp,i
+        Real*8 :: diff_factor,ell_term, A_nfun,B_nfun
+	Real*8, dimension(N_R) :: dpoly_nfun
         !rmin_norm
+	A_nfun=0.5*(poly_n2-poly_n1) 
+	B_nfun=0.5*(poly_n1+poly_n2)
+
+		do i=1, N_R
+    	
+
+			dpoly_nfun(i)=A_nfun*tanh((Radius(i)-r_t)*scf)+B_nfun
+
+		
+		enddo
+
+
         diff_factor = 1.0d0 ! hyperdiffusion factor (if desired, 1.0d0 is equivalent to no hyperdiffusion)
         Allocate(amp(1:N_R))
         Allocate(H_Laplacian(1:N_R))
@@ -337,10 +350,11 @@ Contains
                 ! Kappa,rho, T variation in radius
                 amp = S_Diffusion_Coefs_1*diff_factor
                 Call add_implicit_term(teq,tvar,1,amp,lp)
+		
 
-                !Reference State Advection (only do this if reference state is non-adiabatic)
+		!Reference State Advection (only do this if reference state is non-adiabatic)
                 If (advect_reference_state) Then
-                    amp = (H_Laplacian/ref%density)*ref%dsdr
+                    amp = (H_Laplacian/ref%density)*dpoly_nfun
                     Call add_implicit_term(teq,wvar,0,amp,lp)
                 Endif
 

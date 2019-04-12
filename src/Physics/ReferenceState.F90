@@ -217,8 +217,8 @@ Contains
     
 	Subroutine Constant_Reference()
         Implicit None
-        Integer :: i
-        Real*8 :: r_outer, r_inner, prefactor, amp, pscaling
+        Integer :: i,ir
+        Real*8 :: r_outer, r_inner, prefactor, amp, pscaling, A_nfun,B_nfun
         Character*6  :: istr
         Character*12 :: dstring
         Character*8 :: dofmt = '(ES12.5)'
@@ -226,6 +226,7 @@ Contains
         Real*8 :: pafk
         Real*8, Allocatable :: sink(:), cosk(:)
         Real*8, Allocatable :: array2d(:,:)
+	Real*8, dimension(N_R) :: poly_nfun,dpoly_nfun
         Character*120 :: dvf
         Dimensional_Reference = .false.
         viscous_heating = .false.  ! Turn this off for Boussinesq runs
@@ -243,12 +244,43 @@ Contains
             Endif
         Endif
 
+	A_nfun=0.5*(poly_n2-poly_n1) 
+	B_nfun=0.5*(poly_n1+poly_n2)
+
+    
+	do i=1, N_R
+    	
+
+		poly_nfun(i)=(A_nfun/scf)* &
+ 		log(cosh((Radius(i)-r_t)*scf))+B_nfun*Radius(i)+2.9453d0
+
+		
+	enddo
+	do i=1, N_R
+    	
+
+		dpoly_nfun(i)=A_nfun*tanh((Radius(i)-r_t)*scf)+B_nfun
+
+		
+	enddo
+
         ref%density      = 1.0d0
         ref%dlnrho       = 0.0d0
         ref%d2lnrho      = 0.0d0
         ref%pressure     = 1.0d0
-        ref%temperature  = 1.0d0
-        ref%dlnT         = 0.0d0
+        ref%temperature  = poly_nfun
+	ref%dlnT = dpoly_nfun/poly_nfun
+	!do ir=1,N_R-1
+    	!	Ref%dlnT(ir)=((Ref%Temperature(ir+1)-Ref%Temperature(ir))/(Radius(ir+1)-Radius(ir)))
+
+		
+ 	!end do
+	!Ref%dlnT(N_R)=Ref%dlnT(N_R-1)+((Ref%dlnT(N_R-1)-Ref%dlnT(N_R-2))/ &
+		!   (Radius(N_R-1)-Radius(N_R-2)))*(Radius(N_R)-Radius(N_R-1))
+
+
+	!Ref%dlnT=Ref%dlnT/Ref%Temperature
+	!ref%dlnT         = 0.0d0
         ref%dsdr         = 0.0d0
         ref%pressure     = 1.0d0
         ref%gravity      = 0.0d0 ! Not used with constant reference right now
@@ -566,7 +598,7 @@ Contains
         Real*8 ::  d
         Real*8 :: beta, Gas_Constant
         Real*8, Allocatable :: zeta(:)
-	real*8, dimension(N_R) :: zeta_0,  c0, c1, poly_nfun, denom, rho_c, P_c, T_c,logrho,logT,zeta_cz
+	real*8, dimension(N_R) :: zeta_0,  c0, c1, poly_nfun, denom, rho_c, P_c, T_c,logrho,logT,func1,func2
         Real*8 :: One, ee
         Real*8 :: InnerRadius, OuterRadius, A_nfun, B_nfun,r_cz
         Integer :: r,i,ir
@@ -616,48 +648,17 @@ Contains
     
 	do i=1, N_R
     	
-       		poly_nfun(i)=A_nfun*tanh(((Radius(i)-r_cz)/(OuterRadius-r_cz))*scf)+B_nfun
-	
-!(1.d0-tanh(((Radius(i)-r_cz)/(OuterRadius-r_cz))*scf))*(poly_n1-poly_n2)*0.5d0+poly_n2!
+
+		poly_nfun(i)=(A_nfun*0.3*OuterRadius/scf)* &
+ 		log(cosh(((Radius(i)-r_cz)/(OuterRadius-r_cz))*scf))+B_nfun*Radius(i)
+
 		
 	enddo
 
-
-
-	denom=beta * exp(poly_Nrho / poly_nfun) + 1.d0
-	zeta_0= (beta+1.d0)/denom
- 	c0 = (2.d0 * zeta_0 - beta - 1.d0) / (1.d0 - beta)
-	c1 = (1.d0+beta)*(1.d0-zeta_0)/((1.d0- beta)**2.)
-	
-	  
-
        
-        !-----------------------------------------------------------
-        ! allocate and define zeta
-        ! also rho_c, T_c, P_c
 
-        Allocate(zeta(N_R))
-
-        d = OuterRadius - r_cz
-	
-
-        zeta = c0 + c1 * d / Radius
-	zeta_cz = c0 + c1*d/r_cz
-	rho_c = poly_rho_i / (zeta_cz**poly_nfun) 
-
-        denom = (poly_nfun+1.d0) * d * c1
-        P_c = Gravitational_Constant * poly_mass * rho_c / denom
-
-        T_c = (poly_nfun+1.d0) * P_c / (Pressure_Specific_Heat * rho_c)
-	
-
-
-
-
-
-        !-----------------------------------------------------------
         ! Initialize reference structure
-        ref%gamma = (poly_n2+1.0D0)/(poly_n2)
+        ref%gamma = (poly_n+1.0D0)/(poly_n)
 
         If (STABLE_flag) Then
 
@@ -670,16 +671,26 @@ Contains
 
         Ref%Gravity = Gravitational_Constant * poly_mass / Radius**2
 
-        Ref%Density = rho_c * zeta**poly_nfun
+	Ref%Temperature = (poly_nfun+((Gravitational_Constant * poly_mass)/(Radius*Pressure_Specific_Heat)))
 	
+	func1=-Ref%Gravity/(Gas_Constant*Ref%Temperature)
+
+	do ir=N_R-1,1,-1
+		func2(ir)=func2(ir+1)-0.5*(func1(ir+1)+func1(ir))*(Radius(ir+1)-Radius(ir))
+	end do
+	func2(N_R)=0.
 
 	!!calculate dlnrho, dlnT, d2lnrho
 	!logrho=log(Ref%Density)
+	
+
+	Ref%Pressure= 5.8010d13*exp(func2)
+	Ref%Density=Ref%Pressure/(Gas_Constant*Ref%Temperature)
+	
 	do ir=1,N_R-1
     		Ref%dlnrho(ir)=((Ref%Density(ir+1)-Ref%Density(ir))/(Radius(ir+1)-Radius(ir)))
 		
  	end do
-	
 	Ref%dlnrho(N_R)=Ref%dlnrho(N_R-1)+((Ref%dlnrho(N_R-1)-Ref%dlnrho(N_R-2))/ &
 			 (Radius(N_R-1)-Radius(N_R-2)))*(Radius(N_R)-Radius(N_R-1))
 
@@ -695,11 +706,8 @@ Contains
 			(Radius(N_R-1)-Radius(N_R-2)))*(Radius(N_R)-Radius(N_R-1))
        
 	
-        Ref%Temperature = T_c * zeta
-	
 
 	
-	!logT=log(Ref%Temperature)
 
 	do ir=1,N_R-1
     		Ref%dlnT(ir)=((Ref%Temperature(ir+1)-Ref%Temperature(ir))/(Radius(ir+1)-Radius(ir)))
@@ -712,7 +720,7 @@ Contains
 
 	Ref%dlnT=Ref%dlnT/Ref%Temperature
 
-        Ref%Pressure = P_c * zeta**(poly_nfun+1)
+
 	
 	! S for adiabatic case
         !denom = P_c**(1.d0/ref%gamma)
@@ -725,7 +733,7 @@ Contains
 	
         !Ref%dsdr = pressure_specific_heat*(-ref%gravity*ref%density/(ref%gamma*ref%pressure) &
               !  &  -ref%dlnrho)
-	do ir=1,N_R
+	do ir=1,N_R-1
 		Ref%dsdr(ir) = ((Ref%Entropy(ir+1)-Ref%Entropy(ir))/(Radius(ir+1)-Radius(ir))) 
 	end do
 	

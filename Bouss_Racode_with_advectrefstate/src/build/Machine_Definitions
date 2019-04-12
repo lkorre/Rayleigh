@@ -1,0 +1,12 @@
+
+FC = mpif90
+CC = icc -w
+
+DEFAULT = opt
+DEBUG = dbg
+VERSIONS = $(DEFAULT) $(DEBUG)
+RAYLEIGH_INC = -I/nasa/intel/Compiler/2018.3.222/compilers_and_libraries_2018.3.222/linux/mkl/include -I/nasa/intel/Compiler/2018.3.222/compilers_and_libraries_2018.3.222/linux/mkl/include/fftw
+FFLAGS_$(DEFAULT) = -FR -fpp -r8 -O3 -shared-intel -DINTEL_COMPILER -xCORE-AVX2 $(RAYLEIGH_INC)
+LIB_$(DEFAULT) = -mkl -lstdc++
+FFLAGS_$(DEBUG) = -FR -fpp -r8 -O0 -g -CB -traceback -shared-intel -DINTEL_COMPILER $(RAYLEIGH_INC)
+LIB_$(DEBUG) = -mkl -lstdc++
